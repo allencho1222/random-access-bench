@@ -1,16 +1,18 @@
 //
-// Author     :  matto@xilinx 14JAN2018
-// Filename   :  indirect.cu
+// Author     :  matto@xilinx 14JAN2018, alai@xilinx 25JULY2018
+// Filename   :  indirectTest.cu
 // Description:  Cuda random access benchmark example based on indirect.c by gswart/skchavan@oracle
 //
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <sys/utime.h>
+#include <utime.h>
 
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
-#include <helper_functions.h>   
+#include <helper_functions.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 #define DEBUG
 #define CPU_BENCH
@@ -24,10 +26,12 @@
 
 #ifdef FULLMEM
 enum {
-	rows = 1U << 26,
-	array = 1U << 26,
-	groups = 1U << 10,
-	segment_bits = 12,
+	rows = 1U << 10, // above 18 for rows or arrays causes segfault
+        array = 1U << 10,
+        rows_test = 1U << 26,
+        array_test = 1U << 26,
+	groups = 1U << 18,
+	segment_bits = 18,
 	segments = array / (1U << segment_bits)
 };
 #else // FULLMEM
@@ -45,19 +49,83 @@ struct Row {
 };
 
 
-
+	
 #ifdef NOCUDA
-__device__ struct Row d_A[array];
-__device__ unsigned int d_in[rows];
-__device__ struct Row d_out[rows];
+// ikimasu
+//void *rows2;
+//cudaError_t error = cudaMalloc(&rows2, (1U << 31));
+//__device__ struct Row d_A[array];
+__device__ struct Row d_A[array_test];
+//__device__ struct Row *d_A;
+//  cudaError_t error = cudaMalloc((void**) &d_A, (array_test*sizeof(struct Row)) );
+//__device__ unsigned int d_in[rows];
+__device__ unsigned int d_in[rows_test];
+//__device__ struct Row d_out[rows];
+__device__ struct Row d_out[rows_test];
 __device__ unsigned long long d_agg1[groups];
 __device__ unsigned long long d_agg2[groups];
-__device__ struct Row d_out2[rows];
-__device__ struct Row * d_B[segments];
+//__device__ struct Row d_out2[rows];
+__device__ struct Row d_out2[rows_test];
+//__device__ struct Row * d_B[segments];
 
 __global__ void d_bench()
 {
-	unsigned int i;
+	// ikimasu
+	//struct Row A[array];
+
+        //unsigned int in[rows];
+        //struct Row out[rows];
+        //unsigned long long agg1[groups];
+        //unsigned long long agg2[groups];
+
+        //struct Row out2[rows];
+        //struct Row * B[segments];
+
+	int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+	curandState state;
+	curand_init((unsigned long long)clock() + tId, 0, 0, &state);
+
+  	printf("Initializing data structures.\n");
+
+  	// Random fill indirection array A
+  	unsigned int i;
+	printf("Random filling A.\n");
+  	for (i = 0; i < array_test; i++) {
+          //d_A[i].measure = rand() % array_test;
+          //d_A[i].group = rand() % groups;
+	  d_A[i].measure = curand_uniform(&state) * array_test;
+          d_A[i].group = curand_uniform(&state) * groups;
+	  //printf("%d\n",d_A[i].measure);
+	  //printf("%d\n",d_A[i].group);
+
+	  //d_A[i].measure = i;
+          //d_A[i].group = i % groups;
+	  printf("d_A[%d] - %d\n",i,d_A[i].measure);
+          //printf("%d\n",d_A[i].group);
+  	}
+
+  	// Fill segmented array B
+  	/**for (i = 1; i <= segments; i++) {
+          d_B[i] = &(d_A[i * (1U << segment_bits)]);
+  	}**/
+
+  	// Random fill input
+	printf("Random filling input.\n");
+  	for (i = 0; i < rows_test; i++) {
+          //d_in[i] = rand() % array_test;
+	  d_in[i] = curand_uniform(&state) * rows_test;
+	  //printf("%d\n",d_in[i]);
+
+	  //d_in[i] = i;
+	  printf("d_in[%d] - %d\n",i,d_in[i]);
+	}
+
+  	// Zero aggregates
+  	for (i = 0; i < groups; i++) {
+          d_agg1[i] = 0;
+          d_agg2[i] = 0;
+  	}
+	//unsigned int i;
 
 	// Gather rows
 	for (i = 0; i < rows; i++) {
@@ -148,13 +216,24 @@ init()
   }
 
 #ifdef NOCUDA
-  checkCudaErrors(cudaMemcpyToSymbol(d_A, A, sizeof(A)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_B, B, sizeof(B)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_in, in, sizeof(in)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_out, out, sizeof(out)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_out2, out2, sizeof(out2)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_agg1, agg1, sizeof(agg1)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_agg2, agg2, sizeof(agg2)));
+  // ikimasu
+  //struct Row *Acpy = new struct Row[array];
+  //std::copy(A, A+array, Acpy);
+  //for (i = 0; i < array; i++) {
+  //  printf("woohoo");
+  //  Acpy[i] = A[i];
+    //d_A[i] = A[i];
+    //cudaMemcpyToSymbol(d_A[i], A[i], (array*sizeof(A[i])));
+  //}
+  //checkCudaErrors(cudaMemcpyToSymbol(d_A, &Acpy, sizeof(Acpy)));
+
+  //checkCudaErrors(cudaMemcpyToSymbol(d_A, A, sizeof(A)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_B, B, sizeof(B)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_in, in, sizeof(in)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_out, out, sizeof(out)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_out2, out2, sizeof(out2)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_agg1, agg1, sizeof(agg1)));
+  //checkCudaErrors(cudaMemcpyToSymbol(d_agg2, agg2, sizeof(agg2)));
 #endif // !1
 
 
@@ -234,8 +313,10 @@ main(int argc, char *argv[])
 #endif // VERIF
 
 #ifdef NOCUDA
+  //cudaFree(rows2);
+
   cudaFree(d_A);
-  cudaFree(d_B);
+  //cudaFree(d_B);
   cudaFree(d_in);
   cudaFree(d_out);
   cudaFree(d_out2);
