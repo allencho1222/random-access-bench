@@ -30,8 +30,8 @@ enum {
         array = 1U << 10,
         rows_test = 1U << 26,
         array_test = 1U << 26,
-	groups = 1U << 18,
-	segment_bits = 18,
+	groups = 1U << 10,
+	segment_bits = 12,
 	segments = array / (1U << segment_bits)
 };
 #else // FULLMEM
@@ -68,8 +68,50 @@ __device__ unsigned long long d_agg2[groups];
 __device__ struct Row d_out2[rows_test];
 //__device__ struct Row * d_B[segments];
 
+// initialize the GPU arrays
+__global__ void d_init()
+{
+	int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+	curandState state;
+        curand_init((unsigned long long)clock() + tId, 0, 0, &state);
+
+        printf("Initializing data structures.\n");
+
+        // Random fill indirection array A
+        unsigned int i;
+        printf("Random filling A.\n");
+        for (i = 0; i < array_test; i++) {
+          //d_A[i].measure = rand() % array_test;
+          //d_A[i].group = rand() % groups;
+          d_A[i].measure = curand_uniform(&state) * array_test;
+          d_A[i].group = curand_uniform(&state) * groups;
+          //printf("%d\n",d_A[i].measure);
+          //printf("%d\n",d_A[i].group);
+
+          //printf("d_A[%d] - %d\n",i,d_A[i].measure);
+          //printf("%d\n",d_A[i].group);
+        }
+
+        // Fill segmented array B
+        /**for (i = 1; i <= segments; i++) {
+          d_B[i] = &(d_A[i * (1U << segment_bits)]);
+        }**/
+
+        // Random fill input
+        printf("Random filling input.\n");
+        for (i = 0; i < rows_test; i++) {
+          //d_in[i] = rand() % array_test;
+          d_in[i] = curand_uniform(&state) * rows_test;
+          //printf("%d\n",d_in[i]);
+
+          //d_in[i] = i;
+          //printf("d_in[%d] - %d\n",i,d_in[i]);
+        }
+}
+
 __global__ void d_bench()
 {
+	/**
 	// ikimasu
 	//struct Row A[array];
 
@@ -98,16 +140,14 @@ __global__ void d_bench()
 	  //printf("%d\n",d_A[i].measure);
 	  //printf("%d\n",d_A[i].group);
 
-	  //d_A[i].measure = i;
-          //d_A[i].group = i % groups;
 	  printf("d_A[%d] - %d\n",i,d_A[i].measure);
           //printf("%d\n",d_A[i].group);
   	}
 
   	// Fill segmented array B
-  	/**for (i = 1; i <= segments; i++) {
-          d_B[i] = &(d_A[i * (1U << segment_bits)]);
-  	}**/
+  	//for (i = 1; i <= segments; i++) {
+        //  d_B[i] = &(d_A[i * (1U << segment_bits)]);
+  	//}
 
   	// Random fill input
 	printf("Random filling input.\n");
@@ -124,8 +164,8 @@ __global__ void d_bench()
   	for (i = 0; i < groups; i++) {
           d_agg1[i] = 0;
           d_agg2[i] = 0;
-  	}
-	//unsigned int i;
+  	}**/
+	unsigned int i;
 
 	// Gather rows
 	for (i = 0; i < rows; i++) {
@@ -177,37 +217,49 @@ d_check(size_t n, benchtype *t)
 }
 #endif // VERIF
 
+   // struct Row A[array];
 
-static void
-init()
+   // unsigned int in[rows];
+   // struct Row out[rows];
+   // unsigned long long agg1[groups];
+   // unsigned long long agg2[groups];
+
+    //struct Row out2[rows];
+  //  struct Row * B[segments];
+
+//static unsigned int seed;
+
+void init()
 {
-	struct Row A[array];
+  struct Row A[array];
 
-	unsigned int in[rows];
-	struct Row out[rows];
-	unsigned long long agg1[groups];
-	unsigned long long agg2[groups];
+  unsigned int in[rows];
+  struct Row out[rows];
+  unsigned long long agg1[groups];
+  unsigned long long agg2[groups];
 
-	struct Row out2[rows];
-	struct Row * B[segments];
+  struct Row out2[rows];
+  struct Row * B[segments];
+
+  unsigned int seed;
 
   printf("Initializing data structures.\n");
 
   // Random fill indirection array A
   unsigned int i;
   for (i = 0; i < array; i++) {
-	  A[i].measure = rand() % array;
-	  A[i].group = rand() % groups;
+	  A[i].measure = rand_r(&seed) % array;
+	  A[i].group = rand_r(&seed) % groups;
   }
 
   // Fill segmented array B
   for (i = 0; i < segments; i++) {
-	  B[i] = &(A[i * (1U << segment_bits)]);
+    B[i] = &(A[i * (1U << segment_bits)]);
   }
 
   // Random fill input
   for (i = 0; i < rows; i++)
-	  in[i] = rand() % array;
+	  in[i] = rand_r(&seed) % array;
 
   // Zero aggregates
   for (i = 0; i < groups; i++) {
@@ -260,11 +312,64 @@ init()
 
 }
 
-int
-main(int argc, char *argv[])
-{
-  
-  init();
+int main() {
+  //init();
+  struct Row A[array];
+
+  unsigned int in[rows];
+  struct Row out[rows];
+  unsigned long long agg1[groups];
+  unsigned long long agg2[groups];
+
+  struct Row out2[rows];
+  struct Row * B[segments];
+
+  //unsigned int seed;
+
+  printf("Initializing data structures.\n");
+
+  // Random fill indirection array A
+  unsigned int i;
+  for (i = 0; i < array; i++) {
+          A[i].measure = rand() % array;
+          A[i].group = rand() % groups;
+  }
+
+  // Fill segmented array B
+  for (i = 0; i < segments; i++) {
+    B[i] = &(A[i * (1U << segment_bits)]);
+  }
+
+  // Random fill input
+  for (i = 0; i < rows; i++)
+          in[i] = rand() % array;
+
+  // Zero aggregates
+  for (i = 0; i < groups; i++) {
+          agg1[i] = 0;
+          agg2[i] = 0;
+  }
+
+#ifdef CPU_BENCH
+
+  // Gather rows
+  for (i = 0; i < rows; i++) {
+          out[i] = A[in[i]];
+  }
+
+  // Indirect Gather rows
+  for (i = 0; i < rows; i++) {
+          out[i] = A[A[in[i]].measure];
+  }
+
+  // Fused gather group
+  for (i = 0; i < rows; i++) {
+          agg2[A[in[i]].group] += A[in[i]].measure;
+#ifdef DEBUG
+          printf("CPU:  agg2[A[in[i]].group]  = %d\n", agg2[A[in[i]].group]);
+#endif // DEBUG
+  }
+#endif // CPU_BENCH
 
 #ifdef NOCUDA
   int ndev;
@@ -284,6 +389,8 @@ main(int argc, char *argv[])
 
   dim3 grid(prop.multiProcessorCount * (prop.maxThreadsPerMultiProcessor / prop.warpSize));
   dim3 thread(prop.warpSize);
+
+  d_init << <1, 1 >> >();
 
   cudaEvent_t begin, end;
   cudaEventCreate(&begin);
