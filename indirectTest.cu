@@ -14,11 +14,11 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
-#define DEBUG
+//#define DEBUG
 #define CPU_BENCH
 #define NOCUDA
 
-#define MEM_LOGN 28
+#define MEM_LOGN
 //#define GATHER2
 
 #define FULLMEM
@@ -26,10 +26,10 @@
 
 #ifdef FULLMEM
 enum {
-	rows = 1U << 10, // above 18 for rows or arrays causes segfault
-        array = 1U << 10,
-        rows_test = 1U << 26,
-        array_test = 1U << 26,
+	rows = 1U << 25, // above 18 for rows or arrays causes segfault
+        array = 1U << 25,
+        rows_test = 1U << 25,
+        array_test = 1U << 25,
 	groups = 1U << 10,
 	segment_bits = 12,
 	segments = array / (1U << segment_bits)
@@ -101,7 +101,7 @@ __global__ void d_init()
         printf("Random filling input.\n");
         for (i = 0; i < rows_test; i++) {
           //d_in[i] = rand() % array_test;
-          d_in[i] = curand_uniform(&state) * rows_test;
+          d_in[i] = curand_uniform(&state) * array_test;
           //printf("%d\n",d_in[i]);
 
           //d_in[i] = i;
@@ -168,17 +168,17 @@ __global__ void d_bench()
 	unsigned int i;
 
 	// Gather rows
-	for (i = 0; i < rows; i++) {
+	for (i = 0; i < rows_test; i++) {
 		d_out[i] = d_A[d_in[i]];
 	}
 
 	// Indirect Gather rows
-	for (i = 0; i < rows; i++) {
+	for (i = 0; i < rows_test; i++) {
 		d_out[i] = d_A[d_A[d_in[i]].measure]; 
 	}
 
 	// Fused gather group
-	for (i = 0; i < rows; i++) {
+	for (i = 0; i < rows_test; i++) {
 		d_agg2[d_A[d_in[i]].group] += d_A[d_in[i]].measure;
 #ifdef DEBUG
 		printf("GPU: d_agg2[d_A[d_in[i]].group]  = %d\n", d_agg2[d_A[d_in[i]].group] );
@@ -187,7 +187,7 @@ __global__ void d_bench()
 
 #ifdef GATHER2
 	// Segmented gather
-	for (i = 0; i < rows; i++) {
+	for (i = 0; i < rows_test; i++) {
 		int segment_number = (d_in[i] >> segment_bits);
 		int segment_offset = (d_in[i] & ((1U << segment_bits) - 1));
 #ifdef DEBUG
@@ -246,7 +246,7 @@ void init()
   printf("Initializing data structures.\n");
 
   // Random fill indirection array A
-  unsigned int i;
+  unsigned i;
   for (i = 0; i < array; i++) {
 	  A[i].measure = rand_r(&seed) % array;
 	  A[i].group = rand_r(&seed) % groups;
@@ -295,7 +295,10 @@ void init()
   for (i = 0; i < rows; i++) {
 	  out[i] = A[in[i]];
   }
-
+  // Group rows
+                for (i = 0; i < rows; i++) {
+                                agg1[out[i].group] += out[i].measure;
+                }
   // Indirect Gather rows
   for (i = 0; i < rows; i++) {
 	  out[i] = A[A[in[i]].measure];
@@ -312,37 +315,51 @@ void init()
 
 }
 
+  struct Row h_A[array];
+
+  unsigned int h_in[rows];
+  struct Row h_out[rows];
+  unsigned long long h_agg1[groups];
+  unsigned long long h_agg2[groups];
+
+  struct Row h_out2[rows];
+  //struct Row * h_B[segments];
+
+  //static unsigned int seed;
+
 int main() {
   //init();
-  struct Row A[array];
+  //struct Row A[array];
 
-  unsigned int in[rows];
-  struct Row out[rows];
-  unsigned long long agg1[groups];
-  unsigned long long agg2[groups];
+  //unsigned int in[rows];
+  //struct Row out[rows];
+  //unsigned long long agg1[groups];
+  //unsigned long long agg2[groups];
 
-  struct Row out2[rows];
-  struct Row * B[segments];
+  //struct Row out2[rows];
+  //struct Row * B[segments];
 
   //unsigned int seed;
-
+  /**
   printf("Initializing data structures.\n");
 
   // Random fill indirection array A
-  unsigned int i;
+  unsigned i;
+  printf("Random filling A.\n");
   for (i = 0; i < array; i++) {
-          A[i].measure = rand() % array;
-          A[i].group = rand() % groups;
+          A[i].measure = rand_r(&seed) % array;
+          A[i].group = rand_r(&seed) % groups;
   }
 
   // Fill segmented array B
-  for (i = 0; i < segments; i++) {
-    B[i] = &(A[i * (1U << segment_bits)]);
-  }
+  //for (i = 0; i < segments; i++) {
+  //  B[i] = &(A[i * (1U << segment_bits)]);
+  //}
 
   // Random fill input
+  printf("Random fill input\n");
   for (i = 0; i < rows; i++)
-          in[i] = rand() % array;
+          in[i] = rand_r(&seed) % array;
 
   // Zero aggregates
   for (i = 0; i < groups; i++) {
@@ -356,7 +373,6 @@ int main() {
   for (i = 0; i < rows; i++) {
           out[i] = A[in[i]];
   }
-
   // Indirect Gather rows
   for (i = 0; i < rows; i++) {
           out[i] = A[A[in[i]].measure];
@@ -366,11 +382,11 @@ int main() {
   for (i = 0; i < rows; i++) {
           agg2[A[in[i]].group] += A[in[i]].measure;
 #ifdef DEBUG
-          printf("CPU:  agg2[A[in[i]].group]  = %d\n", agg2[A[in[i]].group]);
+          //printf("CPU:  agg2[A[in[i]].group]  = %d\n", agg2[A[in[i]].group]);
 #endif // DEBUG
   }
 #endif // CPU_BENCH
-
+**/
 #ifdef NOCUDA
   int ndev;
   cudaGetDeviceCount(&ndev);
@@ -416,8 +432,31 @@ int main() {
 
 #ifdef VERIF
   //d_check << <grid, thread >> >(n, d_t);
-  cpu_bench();
+  //cpu_bench();
 #endif // VERIF
+
+  //struct Row A[array];
+
+  //unsigned int in[rows];
+  //struct Row out[rows];
+  //unsigned long long agg1[groups];
+  //unsigned long long agg2[groups];
+
+  //struct Row out2[rows];
+  //struct Row * B[segments];
+
+  //unsigned int seed;
+
+
+  printf("Copying host arrays from device.\n");
+  checkCudaErrors(cudaMemcpyFromSymbol(h_A, d_A, sizeof(d_A)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(B, d_B, sizeof(d_B)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_in, d_in, sizeof(d_in)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_out, d_out, sizeof(d_out)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_out2, d_out2, sizeof(d_out2)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_agg1, d_agg1, sizeof(d_agg1)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_agg2, d_agg2, sizeof(d_agg2)));
+  printf("Successfully copied GPU arrays.\n");
 
 #ifdef NOCUDA
   //cudaFree(rows2);
@@ -431,6 +470,66 @@ int main() {
   cudaFree(d_agg2);
 
 #endif // !1
+  // Random fill indirection array A
+  unsigned i;
+  //printf("Random filling A.\n");
+  //for (i = 0; i < array; i++) {
+  //        A[i].measure = rand_r(&seed) % array;
+  //        A[i].group = rand_r(&seed) % groups;
+  //}
+
+  // Random fill input
+  //printf("Random fill input\n");
+  //for (i = 0; i < rows; i++)
+  //        in[i] = rand_r(&seed) % array;
+
+  // Zero aggregates
+  //for (i = 0; i < groups; i++) {
+  //        agg1[i] = 0;
+  //        agg2[i] = 0;
+  //}
+
+#ifdef CPU_BENCH
+  printf("Benching CPU.\n");
+  // Gather rows
+  for (i = 0; i < rows; i++) {
+          h_out[i] = h_A[h_in[i]];
+  }
+  // Indirect Gather rows
+  for (i = 0; i < rows; i++) {
+          h_out[i] = h_A[h_A[h_in[i]].measure];
+  }
+
+  // Fused gather group
+  for (i = 0; i < rows; i++) {
+          h_agg2[h_A[h_in[i]].group] += h_A[h_in[i]].measure;
+#ifdef DEBUG
+          printf("CPU:  h_agg2[h_A[h_in[i]].group]  = %d\n", h_agg2[h_A[h_in[i]].group]);
+#endif // DEBUG
+  }
+  printf("CPU bench successful.\n");
+
+  //delete [] h_A;
+  //delete [] h_in;
+  //delete [] h_out;
+  //delete [] h_out2;
+  //delete [] h_agg1;
+  //delete [] h_agg2;
+
+#endif // CPU_BENCH
+/**
+#ifdef NOCUDA
+  //cudaFree(rows2);
+
+  cudaFree(d_A);
+  //cudaFree(d_B);
+  cudaFree(d_in);
+  cudaFree(d_out);
+  cudaFree(d_out2);
+  cudaFree(d_agg1);
+  cudaFree(d_agg2);
+
+#endif // !1**/
 
   return 0;
 }
