@@ -1,6 +1,6 @@
 //
-// Author     :  matto@xilinx 14JAN2018
-// Filename   :  indirect.cu
+// Author     :  matto@xilinx 14JAN2018, alai@xilinx 25JULY2018
+// Filename   :  indirectTest.cu
 // Description:  Cuda random access benchmark example based on indirect.c by gswart/skchavan@oracle
 //
 #include <stdio.h>
@@ -11,13 +11,15 @@
 
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
-#include <helper_functions.h>   
+#include <helper_functions.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 //#define DEBUG
 #define CPU_BENCH
 #define NOCUDA
 
-#define MEM_LOGN 28
+#define MEM_LOGN
 //#define GATHER2
 
 #define FULLMEM
@@ -25,8 +27,8 @@
 
 #ifdef FULLMEM
 enum {
-	rows = 1U << 25,
-	array = 1U << 25,
+	rows = 1U << 26,
+  array = 1U << 26,
 	groups = 1U << 10,
 	segment_bits = 12,
 	segments = array / (1U << segment_bits)
@@ -45,28 +47,58 @@ struct Row {
 	unsigned int group;
 };
 
-struct Row A[array];
 
-unsigned int in[rows];
-struct Row out[rows];
-unsigned long long agg1[groups];
-unsigned long long agg2[groups];
-
-struct Row out2[rows];
-struct Row * B[segments];
-
+	
 #ifdef NOCUDA
+// ikimasu
 __device__ struct Row d_A[array];
 __device__ unsigned int d_in[rows];
 __device__ struct Row d_out[rows];
 __device__ unsigned long long d_agg1[groups];
 __device__ unsigned long long d_agg2[groups];
 __device__ struct Row d_out2[rows];
-__device__ struct Row * d_B[segments];
+//__device__ struct Row * d_B[segments];
+
+// initialize the GPU arrays
+__global__ void d_init()
+{
+    int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+    curandState state;
+    curand_init((unsigned long long)clock() + tId, 0, 0, &state);
+
+    printf("Initializing data structures.\n");
+
+    // Random fill indirection array A
+    unsigned int i;
+    printf("Randomly filling array A.\n");
+    for (i = 0; i < array; i++) {
+        d_A[i].measure = curand_uniform(&state) * array;
+        d_A[i].group = curand_uniform(&state) * groups;
+
+        //printf("d_A[%d] - %d\n",i,d_A[i].measure);
+    }
+    printf("Successfully initialized A.\n");
+
+    // Fill segmented array B
+    /**for (i = 1; i <= segments; i++) {
+        d_B[i] = &(d_A[i * (1U << segment_bits)]);
+    }**/
+
+    // Random fill input
+    printf("Random filling input array.\n");
+    for (i = 0; i < rows; i++) {
+        d_in[i] = curand_uniform(&state) * array;
+
+        //printf("d_in[%d] - %d\n",i,d_in[i]);
+    }
+    printf("Successfully initialized input array.\n");
+}
 
 __global__ void d_bench()
 {
-	unsigned int i;
+    // ikimasu
+    printf("Initializing data structures.\n");
+	unsigned i;
 
 	// Gather rows
 	for (i = 0; i < rows; i++) {
@@ -118,81 +150,23 @@ d_check(size_t n, benchtype *t)
 }
 #endif // VERIF
 
+/**
+  struct Row h_A[array];
 
-static void init()
-{
+  unsigned int h_in[rows];
+  struct Row h_out[rows];
+  unsigned long long h_agg1[groups];
+  unsigned long long h_agg2[groups];
 
-  printf("Beginning CPU benchmark.\n");
-  struct timeval t0, t1;
-  gettimeofday(&t0, 0);
-  //printf("Initializing data structures.\n");
-
-  // Random fill indirection array A
-  unsigned int i;
-  for (i = 0; i < array; i++) {
-	  A[i].measure = rand() % array;
-	  A[i].group = rand() % groups;
-  }
-
-  // Fill segmented array B
-  for (i = 0; i < segments; i++) {
-	  B[i] = &(A[i * (1U << segment_bits)]);
-  }
-
-  // Random fill input
-  for (i = 0; i < rows; i++)
-	  in[i] = rand() % array;
-
-  // Zero aggregates
-  for (i = 0; i < groups; i++) {
-	  agg1[i] = 0;
-	  agg2[i] = 0;
-  }
+  struct Row h_out2[rows];
+  //struct Row * h_B[segments];
+**/
+  //static unsigned long diff(const struct timeval * newT, const struct timeval * oldT) {
+  //  return (newT->tv_sec - oldT->tv_sec)*1000000 + (newT->tv_usec - oldT->tv_usec);
+  //}
+int main() {
 
 #ifdef NOCUDA
-  checkCudaErrors(cudaMemcpyToSymbol(d_A, A, sizeof(A)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_B, B, sizeof(B)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_in, in, sizeof(in)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_out, out, sizeof(out)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_out2, out2, sizeof(out2)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_agg1, agg1, sizeof(agg1)));
-  checkCudaErrors(cudaMemcpyToSymbol(d_agg2, agg2, sizeof(agg2)));
-#endif // !1
-
-
-#ifdef CPU_BENCH
-
-  // Gather rows
-  for (i = 0; i < rows; i++) {
-	  out[i] = A[in[i]];
-  }
-
-  // Indirect Gather rows
-  for (i = 0; i < rows; i++) {
-	  out[i] = A[A[in[i]].measure];
-  }
-
-  // Fused gather group
-  for (i = 0; i < rows; i++) {
-	  agg2[A[in[i]].group] += A[in[i]].measure;
-#ifdef DEBUG
-	  printf("CPU:  agg2[A[in[i]].group]  = %d\n", agg2[A[in[i]].group]);
-#endif // DEBUG  
-#endif // CPU_BENCH
-  }
-  gettimeofday(&t1, 0);
-  long elapsed = ((t1.tv_sec-t0.tv_sec)*1000000 + t1.tv_usec-t0.tv_usec);
-  printf("CPU elapsed time = %lu microseconds.\n", elapsed);
-}
-
-int main(int argc, char *argv[])
-{
-  
-  init();
-
-#ifdef NOCUDA
-  printf("Beginning GPU benchmark.\n");  
-
   int ndev;
   cudaGetDeviceCount(&ndev);
   int dev = 0;
@@ -211,6 +185,9 @@ int main(int argc, char *argv[])
   dim3 grid(prop.multiProcessorCount * (prop.maxThreadsPerMultiProcessor / prop.warpSize));
   dim3 thread(prop.warpSize);
 
+  printf("Initializing GPU.\n");
+  d_init << <1, 1 >> >();
+
   cudaEvent_t begin, end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
@@ -219,6 +196,7 @@ int main(int argc, char *argv[])
   cudaEventSynchronize(begin);
 
   //d_bench << <grid, thread >> >();
+  printf("Beginning GPU benchmark.\n");
   d_bench << <1, 1 >> >();
 
   cudaEventRecord(end);
@@ -235,12 +213,24 @@ int main(int argc, char *argv[])
 
 #ifdef VERIF
   //d_check << <grid, thread >> >(n, d_t);
-  cpu_bench();
+  //cpu_bench();
 #endif // VERIF
 
+  /**
+  printf("Copying host arrays from device.\n");
+  checkCudaErrors(cudaMemcpyFromSymbol(h_A, d_A, sizeof(d_A)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(h_B, d_B, sizeof(d_B)));
+  checkCudaErrors(cudaMemcpyFromSymbol(h_in, d_in, sizeof(d_in)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(h_out, d_out, sizeof(d_out)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(h_out2, d_out2, sizeof(d_out2)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(h_agg1, d_agg1, sizeof(d_agg1)));
+  //checkCudaErrors(cudaMemcpyFromSymbol(h_agg2, d_agg2, sizeof(d_agg2)));
+  printf("Successfully copied GPU arrays.\n");**/
+
 #ifdef NOCUDA
+
   cudaFree(d_A);
-  cudaFree(d_B);
+  //cudaFree(d_B);
   cudaFree(d_in);
   cudaFree(d_out);
   cudaFree(d_out2);
@@ -248,6 +238,34 @@ int main(int argc, char *argv[])
   cudaFree(d_agg2);
 
 #endif // !1
+  //unsigned i;
+/**
+#ifdef CPU_BENCH
+  printf("Beginning CPU benchmark.\n");
+  struct timeval t0, t1;
+  gettimeofday(&t0, 0);
+  // Gather rows
+  for (i = 0; i < rows; i++) {
+          h_out[i] = h_A[h_in[i]];
+  }
+  // Indirect Gather rows
+  for (i = 0; i < rows; i++) {
+          h_out[i] = h_A[h_A[h_in[i]].measure];
+  }
 
+  // Fused gather group
+  for (i = 0; i < rows; i++) {
+          h_agg2[h_A[h_in[i]].group] += h_A[h_in[i]].measure;
+#ifdef DEBUG
+          printf("CPU:  h_agg2[h_A[h_in[i]].group]  = %d\n", h_agg2[h_A[h_in[i]].group]);
+#endif // DEBUG
+  }
+  gettimeofday(&t1, 0);
+  printf("CPU bench successful.\n");
+  long elapsed = ((t1.tv_sec-t0.tv_sec)*1000000 + t1.tv_usec-t0.tv_usec);
+  printf("CPU elapsed time = %lu microseconds.\n", elapsed);
+
+#endif // CPU_BENCH
+**/
   return 0;
 }
