@@ -1,6 +1,6 @@
 //
 // Author     :  matto@xilinx 14JAN2018, alai@xilinx 25JULY2018
-// Filename   :  indirectTest.cu
+// Filename   :  indirectTest_onlyGPU.cu
 // Description:  Cuda random access benchmark example based on indirect.c by gswart/skchavan@oracle
 //
 #include <stdio.h>
@@ -19,7 +19,7 @@
 #define CPU_BENCH
 #define NOCUDA
 
-#define MEM_LOGN
+#define MEM_LOGN 28
 //#define GATHER2
 
 #define FULLMEM
@@ -77,7 +77,6 @@ __global__ void d_init()
 
         //printf("d_A[%d] - %d\n",i,d_A[i].measure);
     }
-    printf("Successfully initialized A.\n");
 
     // Fill segmented array B
     /**for (i = 1; i <= segments; i++) {
@@ -97,14 +96,16 @@ __global__ void d_init()
 __global__ void d_bench()
 {
     // ikimasu
-    printf("Initializing data structures.\n");
+    //printf("Initializing benchmarks.\n");
 	unsigned i;
 
-	// Gather rows
+    // Gather rows
+    printf("Beginning gather\n");
 	for (i = 0; i < rows; i++) {
 		d_out[i] = d_A[d_in[i]];
 	}
 
+    /**
 	// Indirect Gather rows
 	for (i = 0; i < rows; i++) {
 		d_out[i] = d_A[d_A[d_in[i]].measure]; 
@@ -116,8 +117,9 @@ __global__ void d_bench()
 #ifdef DEBUG
 		printf("GPU: d_agg2[d_A[d_in[i]].group]  = %d\n", d_agg2[d_A[d_in[i]].group] );
 #endif // DEBUG
-	}
+	}**/
 
+    /**
 #ifdef GATHER2
 	// Segmented gather
 	for (i = 0; i < rows; i++) {
@@ -135,7 +137,7 @@ __global__ void d_bench()
 		d_out2[i] = d_B[segment_number][segment_offset];
 	}
 #endif // GATHER2
-
+**/
 
 }
 #endif // !1
@@ -188,6 +190,7 @@ int main() {
   printf("Initializing GPU.\n");
   d_init << <1, 1 >> >();
 
+
   cudaEvent_t begin, end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
@@ -206,8 +209,9 @@ int main() {
   cudaEventElapsedTime(&ms, begin, end);
   cudaEventDestroy(end);
   cudaEventDestroy(begin);
-  double time = ms * 1.0e-3;
-  printf("GPU elapsed time = %.6f seconds.\n", time);
+  //double time = ms * 1.0e-3;
+  //printf("GPU elapsed time = %.6f seconds.\n", time);
+  printf("GPU elapsed time = %.6f ms.\n", ms);
 
 #endif // !1
 
