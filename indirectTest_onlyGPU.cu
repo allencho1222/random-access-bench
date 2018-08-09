@@ -188,7 +188,7 @@ int main() {
   dim3 thread(prop.warpSize);
 
   printf("Initializing GPU.\n");
-  d_init << <1, 1 >> >();
+  d_init << <5132, 2048>> >();
 
 
   cudaEvent_t begin, end;
@@ -200,7 +200,7 @@ int main() {
 
   //d_bench << <grid, thread >> >();
   printf("Beginning GPU benchmark.\n");
-  d_bench << <1, 1 >> >();
+  d_bench << <5132, 2048 >> >();
 
   cudaEventRecord(end);
   cudaEventSynchronize(end);

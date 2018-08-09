@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
   cudaEventSynchronize(begin);
 
   //d_bench << <grid, thread >> >();
-  d_bench << <1, 1 >> >();
+  d_bench << <5132, 2048 >> >();
 
   cudaEventRecord(end);
   cudaEventSynchronize(end);
@@ -228,8 +228,8 @@ int main(int argc, char *argv[])
   cudaEventElapsedTime(&ms, begin, end);
   cudaEventDestroy(end);
   cudaEventDestroy(begin);
-  double time = ms * 1.0e-3;
-  printf("GPU elapsed time = %.6f seconds.\n", time);
+  //double time = ms * 1.0e-3;
+  printf("GPU elapsed time = %.6f ms.\n", ms);
 
 #endif // !1
 
