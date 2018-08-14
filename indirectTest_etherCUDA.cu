@@ -38,6 +38,10 @@ struct Row {
 	unsigned int group;
 };
 
+struct Row16 {
+	struct Row rows_arr[16];
+};
+
 struct String {
   char str[128];
 };
@@ -98,9 +102,11 @@ __device__ void random_string(char *s)
   printf("\n");
 }
 
-__device__ struct String dd_A[array];
+//__device__ struct String dd_A[array];
+__device__ struct Row16 dd_A[array];
 __device__ unsigned int dd_in[rows];
-__device__ struct String dd_out[rows];
+//__device__ struct String dd_out[rows];
+__device__ struct Row16 dd_out[rows];
 
 // initialize the GPU arrays
 __global__ void d_init()
@@ -109,19 +115,29 @@ __global__ void d_init()
     int tId = threadIdx.x + (blockIdx.x * blockDim.x);
     curandState state;
     curand_init((unsigned long long)clock() + tId, 0, 0, &state);
-    printf("Size of word: %lu bytes\n", (unsigned long)sizeof(dd_A[0].str));
+    //printf("Size of word: %lu bytes\n", (unsigned long)sizeof(dd_A[0].str));
+    //printf("Size of word container: %lu bytes\n", (unsigned long)sizeof(dd_A[0]));
+    
 
     // Random fill indirection array A
     unsigned int i;
+    unsigned int j;
     printf("Randomly filling array A.\n");
     for (i = 0; i < array; i++) {
+      for (j = 0; j < 16; j++) {
+        dd_A[i].rows_arr[j].measure = curand_uniform(&state) * array;
+        dd_A[i].rows_arr[j].group = curand_uniform(&state) * groups;
+        //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
+      }
         //d_A[i].measure = curand_uniform(&state) * array;
         //d_A[i].group = curand_uniform(&state) * groups;
-        printf("dd_A[%d] - ",i);
-        random_string(dd_A[i].str);
+
+        //printf("dd_A[%d] - ",i);
+        //random_string(dd_A[i].str);
 
         //printf("d_A[%d] - %d\n",i,d_A[i].measure);
     }
+    printf("Size of row container: %lu bytes\n", (unsigned long)sizeof(dd_A[0]));
 
     // Random fill input
     printf("Random filling input array.\n");
@@ -150,11 +166,12 @@ __global__ void d_bench()
   // bench 128-byte reads
   unsigned i;
   for (i = 0; i < rows; i++) {
-    for (int j = 0; j < 128; j++) {
-      dd_out[i].str[j] = dd_A[dd_in[i]].str[j];
+    dd_out[i] = dd_A[dd_in[i]];
+    /*for (int j = 0; j < 16; j++) {
+    //  dd_out[i].str[j] = dd_A[dd_in[i]].str[j];
       //printf("%c",dd_out[i].str[j]);
-    }
-    //dd_out[i] = dd_A[dd_in[i]];
+      printf("dd_out[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
+    }*/
     //printf("\n");
   }
   
@@ -193,9 +210,9 @@ int main() {
   dim3 thread(prop.warpSize);
 
   printf("Initializing GPU.\n");
-  d_init << <1, 1>> >();
+  d_init << <8192, 2048>> >();
 
-
+  // single threaded
   cudaEvent_t begin, end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
@@ -203,9 +220,8 @@ int main() {
   cudaEventRecord(begin);
   cudaEventSynchronize(begin);
 
-  //d_bench << <grid, thread >> >();
-  printf("Beginning GPU benchmark.\n");
-  d_bench << <1, 1 >> >();
+  printf("2 threads.\n");
+  d_bench << <1, 2 >> >();
 
   cudaEventRecord(end);
   cudaEventSynchronize(end);
@@ -214,9 +230,13 @@ int main() {
   cudaEventElapsedTime(&ms, begin, end);
   cudaEventDestroy(end);
   cudaEventDestroy(begin);
+  printf("Elapsed time = %.6f ms.\n", ms);
+  printf("128-byte fetch average = %.6f ms.\n", ms/rows);
+
+
   //double time = ms * 1.0e-3;
   //printf("GPU elapsed time = %.6f seconds.\n", time);
-  printf("GPU elapsed time = %.6f ms.\n", ms);
+  
 
 #endif // !1
 
