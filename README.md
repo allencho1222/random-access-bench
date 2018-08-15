@@ -6,5 +6,6 @@ nvcc -o indirectTest indirectTest.cu -ccbin=g++ --compiler-options='-mcmodel=lar
 m_70 -gencode=arch=compute_70,code=sm_70 -g -G -I /usr/local/cuda-9.1/NVIDIA_CUDA-9.1_Samples/common/inc
 ```
 
+Benchmarks 128-byte random accesses on GPU memory.
 
 Designed to be run on an Amazon Ubuntu Deep Learning AMI running p3.2xlarge, i.e a single Nvidia Tesla V100 GPU.
