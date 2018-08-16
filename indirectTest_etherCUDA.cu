@@ -26,8 +26,8 @@
 //#define VERIF
 
 enum {
-	rows = 1U << 18,
-  array = 1U << 18,
+	rows = 1U << 23,
+  array = 1U << 23,
 	groups = 1U << 10,
 	segment_bits = 12,
   segments = array / (1U << segment_bits)
@@ -39,7 +39,11 @@ struct Row {
 };
 
 struct Row16 {
-	struct Row rows_arr[16];
+  // each Row stucture is 8 bytes
+  //struct Row rows_arr[16]; // 128 bytes
+  struct Row rows_arr[4]; // 32 bytes
+
+  //struct Row rows_arr[input_size/8];
 };
 
 struct String {
@@ -107,6 +111,7 @@ __device__ struct Row16 dd_A[array];
 __device__ unsigned int dd_in[rows];
 //__device__ struct String dd_out[rows];
 __device__ struct Row16 dd_out[rows];
+__device__ struct Row16 dd_out2[rows];
 
 // initialize the GPU arrays
 __global__ void d_init()
@@ -124,7 +129,7 @@ __global__ void d_init()
     unsigned int j;
     printf("Randomly filling array A.\n");
     for (i = 0; i < array; i++) {
-      for (j = 0; j < 16; j++) {
+      for (j = 0; j < 4; j++) {
         dd_A[i].rows_arr[j].measure = curand_uniform(&state) * array;
         dd_A[i].rows_arr[j].group = curand_uniform(&state) * groups;
         //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
@@ -176,6 +181,33 @@ __global__ void d_bench()
   }
   
 }
+
+// bench 128-byte reads
+__global__ void d_bench_read()
+{
+  unsigned i;
+  for (i = 0; i < rows; i++) {
+    dd_A[dd_in[i]];
+  }
+}
+
+// set up array for d_bench_write
+__global__ void d_bench_write_initialize()
+{
+  unsigned i;
+  for (i = 0; i < rows; i++) {
+    dd_out2[i] = dd_A[dd_in[i]];
+  }
+}
+
+// bench 128-byte writes
+__global__ void d_bench_write()
+{
+  unsigned i;
+  for (i = 0; i < rows; i++) {
+    dd_out[i] = dd_out2[i];
+  }
+}
 #endif // !1
 
 #ifdef VERIF
@@ -188,7 +220,7 @@ d_check(size_t n, benchtype *t)
 }
 #endif // VERIF
 
-int main() {
+int main(int argc, char** argv) {
 
 #ifdef NOCUDA
   int ndev;
@@ -209,29 +241,48 @@ int main() {
   dim3 grid(prop.multiProcessorCount * (prop.maxThreadsPerMultiProcessor / prop.warpSize));
   dim3 thread(prop.warpSize);
 
+  printf("Size of word container: %lu bytes\n", (unsigned long)sizeof(dd_A[0]));
+
   printf("Initializing GPU.\n");
+  printf("Initializing arrays with %d elements.\n", array);
   d_init << <8192, 2048>> >();
 
   // single threaded
-  cudaEvent_t begin, end;
-  cudaEventCreate(&begin);
-  cudaEventCreate(&end);
+  cudaEvent_t read_begin, read_end, write_begin, write_end;
+  cudaEventCreate(&read_begin);
+  cudaEventCreate(&read_end);
+  cudaEventCreate(&write_begin);
+  cudaEventCreate(&write_end);
 
-  cudaEventRecord(begin);
-  cudaEventSynchronize(begin);
+  printf("Benching reads.\n");
+  cudaEventRecord(read_begin);
+  cudaEventSynchronize(read_begin);
+  d_bench_read << <1, 1>> >();
+  cudaEventRecord(read_end);
+  cudaEventSynchronize(read_end);
 
-  printf("2 threads.\n");
-  d_bench << <1, 2 >> >();
+  printf("Initializing writes.\n");
+  d_bench_write_initialize << <8192, 2048>> >();
 
-  cudaEventRecord(end);
-  cudaEventSynchronize(end);
+  printf("Benching writes.\n");
+  cudaEventRecord(write_begin);
+  cudaEventSynchronize(write_begin);
+  d_bench_write << <1, 1>> >();
+  cudaEventRecord(write_end);
+  cudaEventSynchronize(write_end);
 
-  float ms;
-  cudaEventElapsedTime(&ms, begin, end);
-  cudaEventDestroy(end);
-  cudaEventDestroy(begin);
-  printf("Elapsed time = %.6f ms.\n", ms);
-  printf("128-byte fetch average = %.6f ms.\n", ms/rows);
+  float ms_read, ms_write;
+  cudaEventElapsedTime(&ms_read, read_begin, read_end);
+  cudaEventElapsedTime(&ms_write, write_begin, write_end);
+  cudaEventDestroy(write_end);
+  cudaEventDestroy(write_begin);
+  cudaEventDestroy(read_end);
+  cudaEventDestroy(read_begin);
+  printf("Elapsed time = %.6f seconds.\n", (ms_read + ms_write)/1000);
+  //printf("32-byte gather average = %.6f ms.\n", (ms_read + ms_write)/rows);
+
+  printf("%lu-byte read average = %.6f ms.\n", (unsigned long)sizeof(dd_A[0]), (ms_read)/rows);
+  printf("%lu-byte write average = %.6f ms.\n", (unsigned long)sizeof(dd_A[0]), (ms_write)/rows);
 
 
   //double time = ms * 1.0e-3;
