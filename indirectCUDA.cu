@@ -26,8 +26,8 @@
 //#define VERIF
 
 enum {
-  rows = 1U << 20,
-  array = 1U << 20,
+  rows = 1U << 23,
+  array = 1U << 23,
   groups = 1U << 10,
   segment_bits = 12,
   segments = array / (1U << segment_bits)
@@ -44,7 +44,7 @@ struct Row16 {
   //struct Row rows_arr[4]; // 32 bytes
   
   // [input size/size of Row]
-  struct Row rows_arr[512/8];
+  struct Row rows_arr[32/8];
 };
 	
 #ifdef NOCUDA
@@ -57,7 +57,8 @@ struct Row16 {
 //__device__ struct Row d_out2[rows];
 //__device__ struct Row * d_B[segments];
 
-__device__ struct Row16 dd_A[array];
+__device__ struct Row16 dd_A[array]; // random array
+__device__ struct Row16 dd_B[array]; // sequential array
 __device__ unsigned int dd_in[rows];
 __device__ struct Row16 dd_out[rows];
 __device__ struct Row16 dd_out2[rows];
@@ -85,10 +86,19 @@ __global__ void d_init()
         //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
       }
     }
-    printf("Size of row container: %lu bytes\n", input_size);
+
+    printf("Sequentially filling array B.\n");
+    for (i = 0; i < array; i++) {
+        for (j = 0; j < (input_size/row_size); j++) {
+            dd_A[i].rows_arr[j].measure = i;
+            dd_A[i].rows_arr[j].group = i & groups;
+            //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
+        }
+    }
+    //printf("Size of row container: %lu bytes\n", input_size);
 
     // Random fill input
-    printf("Random filling input array.\n");
+    printf("Randomly filling input array.\n");
     for (i = 0; i < rows; i++) {
         dd_in[i] = curand_uniform(&state) * array;
         //printf("dd_in[%d] - %d\n",i,dd_in[i]);
@@ -96,9 +106,9 @@ __global__ void d_init()
     printf("Successfully initialized input array.\n");
 
     // generate random array for benching writes
-    for (i = 0; i < rows; i++) {
-      dd_out[i] = dd_out2[dd_in[i]];
-    }
+    //for (i = 0; i < rows; i++) {
+    //  dd_out[i] = dd_out2[dd_in[i]];
+    //}
 }
 
 // bench gathers
@@ -111,15 +121,6 @@ __global__ void d_bench()
   
 }
 
-// bench linear reads
-__global__ void d_bench_read_linear()
-{
-  unsigned i;
-  for (i = 0; i < rows; i++) {
-    dd_A[i];
-  }
-}
-
 // bench random reads
 __global__ void d_bench_read_random()
 {
@@ -129,23 +130,33 @@ __global__ void d_bench_read_random()
   }
 }
 
-// bench linear writes
-__global__ void d_bench_write_linear()
-{
-  unsigned i;
-  for (i = 0; i < rows; i++) {
-    dd_out[i] = dd_A[i];
-  }
-}
-
 // bench random writes
 __global__ void d_bench_write_random()
 {
   unsigned i;
   for (i = 0; i < rows; i++) {
-    dd_out[dd_in[i]] = dd_out2[i];
+    dd_out2[dd_in[i]] = dd_A[i];
   }
 }
+
+// bench linear reads
+__global__ void d_bench_read_linear()
+{
+  unsigned i;
+  for (i = 0; i < rows; i++) {
+    dd_B[i];
+  }
+}
+
+// bench linear writes
+__global__ void d_bench_write_linear()
+{
+  unsigned i;
+  for (i = 0; i < rows; i++) {
+    dd_out[i] = dd_B[i];
+  }
+}
+
 
 #endif // !1
 
@@ -200,26 +211,6 @@ int main(int argc, char** argv) {
 
   float ms_read_linear, ms_write_linear, ms_read_random, ms_write_random;
 
-  // linear read/write
-  printf("Benching linear reads.\n");
-  cudaEventRecord(read_begin);
-  cudaEventSynchronize(read_begin);
-  d_bench_read_linear << <1, 1>> >();
-  cudaEventRecord(read_end);
-  cudaEventSynchronize(read_end);
-
-  printf("Benching linear writes.\n");
-  cudaEventRecord(write_begin);
-  cudaEventSynchronize(write_begin);
-  d_bench_write_linear << <1, 1>> >();
-  cudaEventRecord(write_end);
-  cudaEventSynchronize(write_end);
-
-  cudaEventElapsedTime(&ms_read_linear, read_begin, read_end);
-  cudaEventElapsedTime(&ms_write_linear, write_begin, write_end);
-  printf("%lu-byte linear read average = %.6f ms.\n", input_size, (ms_read_linear)/rows);
-  printf("%lu-byte linear write average = %.6f ms.\n", input_size, (ms_write_linear)/rows);
-
   // random read/write
   printf("Benching random reads.\n");
   cudaEventRecord(read_begin);
@@ -238,7 +229,27 @@ int main(int argc, char** argv) {
   cudaEventElapsedTime(&ms_read_random, read_begin, read_end);
   cudaEventElapsedTime(&ms_write_random, write_begin, write_end);
   printf("%lu-byte random read average = %.6f ms.\n", input_size, (ms_read_random)/rows);
-  printf("%lu-byte random write average = %.6f ms.\n", input_size, (ms_write_random)/rows);
+  printf("%lu-byte random write average = %.6f ms.\n", input_size, (ms_write_random-ms_read_random)/rows);
+
+  // linear read/write
+  printf("Benching linear reads.\n");
+  cudaEventRecord(read_begin);
+  cudaEventSynchronize(read_begin);
+  d_bench_read_linear << <1, 1>> >();
+  cudaEventRecord(read_end);
+  cudaEventSynchronize(read_end);
+
+  printf("Benching linear writes.\n");
+  cudaEventRecord(write_begin);
+  cudaEventSynchronize(write_begin);
+  d_bench_write_linear << <1, 1>> >();
+  cudaEventRecord(write_end);
+  cudaEventSynchronize(write_end);
+
+  cudaEventElapsedTime(&ms_read_linear, read_begin, read_end);
+  cudaEventElapsedTime(&ms_write_linear, write_begin, write_end);
+  printf("%lu-byte linear read average = %.6f ms.\n", input_size, (ms_read_linear)/rows);
+  printf("%lu-byte linear write average = %.6f ms.\n", input_size, (ms_write_linear-ms_read_linear)/rows);
 
   cudaEventDestroy(write_end);
   cudaEventDestroy(write_begin);
@@ -279,6 +290,7 @@ int main(int argc, char** argv) {
   //cudaFree(d_agg2);
 
   cudaFree(dd_A);
+  cudaFree(dd_B);
   cudaFree(dd_in);
   cudaFree(dd_out);
   cudaFree(dd_out2);
