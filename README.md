@@ -6,6 +6,11 @@ nvcc -o indirectCUDA indirectCUDA.cu -ccbin=g++ --compiler-options='-mcmodel=lar
 m_70 -gencode=arch=compute_70,code=sm_70 -g -G -I /usr/local/cuda-9.1/NVIDIA_CUDA-9.1_Samples/common/inc
 ```
 
+Run:
+```
+./indirectCUDA
+```
+
 Benchmarks byte random accesses on GPU memory. 
 
 Use https://github.com/cowsintuxedos/random-access-bench/blob/master/indirectCUDA.cu 
