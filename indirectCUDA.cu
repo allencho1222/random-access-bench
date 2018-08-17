@@ -26,8 +26,8 @@
 //#define VERIF
 
 enum {
-  rows = 1U << 22,
-  array = 1U << 22,
+  rows = 1U << 20,
+  array = 1U << 20,
   groups = 1U << 10,
   segment_bits = 12,
   segments = array / (1U << segment_bits)
@@ -44,11 +44,7 @@ struct Row16 {
   //struct Row rows_arr[4]; // 32 bytes
   
   // [input size/size of Row]
-  struct Row rows_arr[32/8];
-};
-
-struct String {
-  char str[128];
+  struct Row rows_arr[512/8];
 };
 	
 #ifdef NOCUDA
@@ -75,20 +71,21 @@ __global__ void d_init()
     curand_init((unsigned long long)clock() + tId, 0, 0, &state);
     //printf("Size of word: %lu bytes\n", (unsigned long)sizeof(dd_A[0].str));
     //printf("Size of word container: %lu bytes\n", (unsigned long)sizeof(dd_A[0]));
-    unsigned long input_size = (unsigned long)sizeof(dd_A[0]);
+    unsigned long input_size = (unsigned long)sizeof(struct Row16);
+    unsigned long row_size = (unsigned long)sizeof(struct Row);
 
     // Random fill indirection array A
     unsigned int i;
     unsigned int j;
     printf("Randomly filling array A.\n");
     for (i = 0; i < array; i++) {
-      for (j = 0; j < (input_size/8); j++) {
+      for (j = 0; j < (input_size/row_size); j++) {
         dd_A[i].rows_arr[j].measure = curand_uniform(&state) * array;
         dd_A[i].rows_arr[j].group = curand_uniform(&state) * groups;
         //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
       }
     }
-    printf("Size of row container: %lu bytes\n", (unsigned long)sizeof(dd_A[0]));
+    printf("Size of row container: %lu bytes\n", input_size);
 
     // Random fill input
     printf("Random filling input array.\n");
@@ -137,7 +134,7 @@ __global__ void d_bench_write_linear()
 {
   unsigned i;
   for (i = 0; i < rows; i++) {
-    dd_out[i] = dd_out2[i];
+    dd_out[i] = dd_A[i];
   }
 }
 
@@ -146,7 +143,7 @@ __global__ void d_bench_write_random()
 {
   unsigned i;
   for (i = 0; i < rows; i++) {
-    dd_out[i] = dd_out2[dd_in[i]];
+    dd_out[dd_in[i]] = dd_out2[i];
   }
 }
 
@@ -183,7 +180,7 @@ int main(int argc, char** argv) {
   dim3 grid(prop.multiProcessorCount * (prop.maxThreadsPerMultiProcessor / prop.warpSize));
   dim3 thread(prop.warpSize);
 
-  unsigned long input_size = (unsigned long)sizeof(dd_A[0]);
+  unsigned long input_size = (unsigned long)sizeof(struct Row16);
   printf("Size of word container: %lu bytes\n", input_size);
   //printf("Number of SMs: %d\n", num_sm);
 
