@@ -27,17 +27,17 @@
 
 // README
 // USE THIS TO CHANGE THE SIZE OF THE STRUCTURE
-#define INPUT_SIZE 32
+#define INPUT_SIZE 128  // make sure it's divisible by 8
 
 // max array sizes for certain inputs; going over will cause program to crash
 enum {
-#if INPUT_SIZE>128
+#if INPUT_SIZE>128  // 512 B
   rows = 1U << 19,
   array = 1U << 19,
-#elif INPUT_SIZE>32
+#elif INPUT_SIZE>32 // 128 B
   rows = 1U << 21,
   array = 1U << 21,
-#elif INPUT_SIZE>0
+#elif INPUT_SIZE>0  // 32 B
   rows = 1U << 23,
   array = 1U << 23,
 #endif
@@ -46,16 +46,15 @@ enum {
   segments = array / (1U << segment_bits)
 };
 
+// each Row stucture is 8 bytes
 struct Row {
   unsigned int measure;
   unsigned int group;
 };
 
+// stores an array of rows to act as a sized byte container
+// i.e. struct Row rows_arr[128/8] is 128 bytes
 struct Row16 {
-  // each Row stucture is 8 bytes
-  //struct Row rows_arr[16]; // 128 bytes
-  //struct Row rows_arr[4]; // 32 bytes
-  
   // [input size/size of Row]
   struct Row rows_arr[INPUT_SIZE/8];
 };
