@@ -27,7 +27,7 @@
 
 // README
 // USE THIS TO CHANGE THE SIZE OF THE STRUCTURE
-#define INPUT_SIZE 128  // make sure it's divisible by 8
+#define INPUT_SIZE 32  // make sure it's divisible by 8
 
 // max array sizes for certain inputs; going over will cause program to crash
 enum {
