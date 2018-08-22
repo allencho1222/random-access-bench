@@ -31,15 +31,15 @@
 
 // max array sizes for certain inputs; going over will cause program to crash
 enum {
-#if INPUT_SIZE>128  // 512 B
-  rows = 1U << 19,
-  array = 1U << 19,
-#elif INPUT_SIZE>32 // 128 B
-  rows = 1U << 21,
-  array = 1U << 21,
-#elif INPUT_SIZE>0  // 32 B
-  rows = 1U << 23,
-  array = 1U << 23,
+#if INPUT_SIZE>128  // 512 B, max 19
+  rows = 1U << 16,
+  array = 1U << 16,
+#elif INPUT_SIZE>32 // 128 B, max 21
+  rows = 1U << 16,
+  array = 1U << 16,
+#elif INPUT_SIZE>0  // 32 B, max 23
+  rows = 1U << 10,
+  array = 1U << 10,
 #endif
   groups = 1U << 10,
   segment_bits = 12,
@@ -105,8 +105,8 @@ __global__ void d_init()
     printf("Sequentially filling array B.\n");
     for (i = 0; i < array; i++) {
       for (j = 0; j < (input_size_d/row_size_d); j++) {
-        dd_A[i].rows_arr[j].measure = i;
-        dd_A[i].rows_arr[j].group = i & groups;
+        dd_B[i].rows_arr[j].measure = array/2;
+        dd_B[i].rows_arr[j].group = i & groups;
         //printf("dd_A[%d][%d] - %d\n",i,j,dd_A[i].rows_arr[j].measure);
       }
     }
@@ -135,12 +135,15 @@ __global__ void d_bench()
   }
 }
 
+// read / write methods //
 // bench random reads
 __global__ void d_bench_read_random()
 {
   unsigned i;
+  struct Row16 temp;
   for (i = 0; i < rows; i++) {
-    dd_out2[i] = dd_A[dd_in[i]];
+    temp = dd_A[dd_in[i]];
+    //dd_out[dd_in[i]] = temp;
   }
 }
 
@@ -151,6 +154,7 @@ __global__ void d_bench_write_random()
   struct Row16 temp = dd_A[0];
   for (i = 0; i < rows; i++) {
     dd_out2[dd_in[i]] = temp;
+    //temp = dd_A[dd_in[i]];
   }
 }
 
@@ -158,8 +162,10 @@ __global__ void d_bench_write_random()
 __global__ void d_bench_read_linear()
 {
   unsigned i;
+  struct Row16 temp;
   for (i = 0; i < rows; i++) {
-    dd_out[i] = dd_B[i];
+    temp = dd_B[i];
+    //dd_out[i] = temp;
   }
 }
 
@@ -170,6 +176,7 @@ __global__ void d_bench_write_linear()
   struct Row16 temp = dd_A[0];
   for (i = 0; i < rows; i++) {
     dd_out[i] = temp;
+    //temp = dd_B[i];
   }
 }
 
@@ -219,7 +226,9 @@ int main(int argc, char** argv) {
   // max = << <65536,1024> >>
   d_init << <8192, 2048>> >();
   //d_bench_write_initialize << <8192, 2048>> >();
-
+  unsigned blocks_per_grid, threads_per_block;
+  blocks_per_grid = 1;
+  threads_per_block = 1;
 
   // single threaded
   cudaEvent_t read_begin, read_end, write_begin, write_end;
@@ -234,14 +243,14 @@ int main(int argc, char** argv) {
   printf("Benching random reads.\n");  // random reads
   cudaEventRecord(read_begin);
   cudaEventSynchronize(read_begin);
-  d_bench_read_random << <1, 1>> >();
+  d_bench_read_random << <blocks_per_grid, threads_per_block>> >();
   cudaEventRecord(read_end);
   cudaEventSynchronize(read_end);
 
   printf("Benching random writes.\n");  // random writes
   cudaEventRecord(write_begin);
   cudaEventSynchronize(write_begin);
-  d_bench_write_random << <1, 1>> >();
+  d_bench_write_random << <blocks_per_grid, threads_per_block>> >();
   cudaEventRecord(write_end);
   cudaEventSynchronize(write_end);
 
@@ -260,14 +269,14 @@ int main(int argc, char** argv) {
   printf("Benching linear reads.\n");  // linear reads
   cudaEventRecord(read_begin);
   cudaEventSynchronize(read_begin);
-  d_bench_read_linear << <1, 1>> >();
+  d_bench_read_linear << <blocks_per_grid, threads_per_block>> >();
   cudaEventRecord(read_end);
   cudaEventSynchronize(read_end);
 
   printf("Benching linear writes.\n");  // linear writes
   cudaEventRecord(write_begin);
   cudaEventSynchronize(write_begin);
-  d_bench_write_linear << <1, 1>> >();
+  d_bench_write_linear << <blocks_per_grid, threads_per_block>> >();
   cudaEventRecord(write_end);
   cudaEventSynchronize(write_end);
 
