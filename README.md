@@ -8,9 +8,9 @@ nvcc -o randomaccess randomaccess.cu
 
 Run:
 ```
-./randomaccess
+./randomaccess SIZE_OF_BITSHIFT
 ```
-
+Where SIZE_OF_BITSHIFT = size of table, i.e. ./randomaccess 28 would run randomaccess on a table of 1<<28 integers.
 
 # OLD VERSION
 
