@@ -1,6 +1,6 @@
 # random-access-bench
 
-Current version based on the [HPCC industry random access benchmark](https://github.com/nattoheaven/cuda_randomaccess/blob/master/randomaccess.cu); refer to [this](http://icl.cs.utk.edu/projectsfiles/hpcc/RandomAccess/) for more info.
+[Current version](https://github.com/cowsintuxedos/random-access-bench/blob/master/randomaccess.cu) based on the [HPCC industry random access benchmark](https://github.com/nattoheaven/cuda_randomaccess/blob/master/randomaccess.cu); refer to [this](http://icl.cs.utk.edu/projectsfiles/hpcc/RandomAccess/) for more info.
 Compile:
 ```
 nvcc -o randomaccess randomaccess.cu
